@@ -1,0 +1,19 @@
+MacWin — first launch
+
+Requires macOS 15.0 or later.
+
+Quick install (no Gatekeeper "Cannot verify MacWin" prompt):
+  1. Drag MacWin.app to Applications (or run "Install MacWin.command").
+  2. If macOS shows "MacWin Not Opened / Apple could not verify MacWin", run in Terminal:
+       xattr -cr /Applications/MacWin.app && open /Applications/MacWin.app
+     Or go to System Settings > Privacy & Security > scroll down to Security >
+     click "Open Anyway" next to MacWin.
+
+Allow Local Network access when macOS asks. To share keyboard and mouse,
+enable MacWin under System Settings > Privacy & Security > Accessibility and
+Input Monitoring. If macOS asks for clipboard access, allow MacWin under
+Paste from Other Apps.
+
+This package is not universal: bundle.sh builds the default Rust target of
+the build Mac. Use an arm64 build for Apple silicon or an x86_64 build for
+Intel Macs.
