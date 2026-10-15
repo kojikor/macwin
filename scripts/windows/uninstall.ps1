@@ -27,9 +27,20 @@ function Get-DefaultDestination([string]$ScriptRoot) {
     }
 }
 
+function Get-NormalizedDirectoryPath([string]$Path) {
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $root = [IO.Path]::GetPathRoot($fullPath)
+    if ($fullPath.Length -gt $root.Length) {
+        $separators = [char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+        $fullPath = $fullPath.TrimEnd($separators)
+    }
+    $fullPath
+}
+
 if (-not $PSBoundParameters.ContainsKey('Destination')) {
     $Destination = Get-DefaultDestination $PSScriptRoot
 }
+$Destination = Get-NormalizedDirectoryPath $Destination
 
 function Send-SettingChange {
     # Removing a variable that does not exist changes nothing, but .NET still broadcasts

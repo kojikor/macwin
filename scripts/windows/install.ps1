@@ -23,6 +23,18 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+function Get-NormalizedDirectoryPath([string]$Path) {
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $root = [IO.Path]::GetPathRoot($fullPath)
+    if ($fullPath.Length -gt $root.Length) {
+        $separators = [char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+        $fullPath = $fullPath.TrimEnd($separators)
+    }
+    $fullPath
+}
+
+$Destination = Get-NormalizedDirectoryPath $Destination
+
 $programs = 'macwin.exe', 'macwin-tray.exe'
 foreach ($exe in $programs) {
     if (-not (Test-Path (Join-Path $Source $exe))) {

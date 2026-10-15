@@ -42,6 +42,29 @@ try {
                 throw "Unexpected folder match for '$($case.Path)' against '$base'"
             }
         }
+
+        . (Get-FunctionScriptBlock $script 'Get-NormalizedDirectoryPath')
+        $expectedPath = [IO.Path]::GetFullPath($base)
+        $trailingSeparatorPath = $base + [IO.Path]::DirectorySeparatorChar
+        if ((Get-NormalizedDirectoryPath $trailingSeparatorPath) -ne $expectedPath) {
+            throw "A trailing separator was not normalized in $script"
+        }
+        $root = [IO.Path]::GetPathRoot($expectedPath)
+        if ((Get-NormalizedDirectoryPath $root) -ne $root) {
+            throw "A filesystem root was changed in $script"
+        }
+
+        $oldCurrentDirectory = [Environment]::CurrentDirectory
+        try {
+            [Environment]::CurrentDirectory = $tempRoot
+            $separator = [IO.Path]::DirectorySeparatorChar
+            $relativePath = ".${separator}nested${separator}..${separator}macwin${separator}"
+            if ((Get-NormalizedDirectoryPath $relativePath) -ne $expectedPath) {
+                throw "A relative path was not normalized in $script"
+            }
+        } finally {
+            [Environment]::CurrentDirectory = $oldCurrentDirectory
+        }
     }
 
     . (Get-FunctionScriptBlock $uninstallScript 'Get-DefaultDestination')
