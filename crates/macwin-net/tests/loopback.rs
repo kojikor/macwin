@@ -464,6 +464,38 @@ mod pairing {
             "{l:?}"
         );
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_peer_that_drops_before_hello_does_not_burn_the_code() {
+        let mac = Identity::generate().unwrap();
+        let pc = Identity::generate().unwrap();
+        let l = pair_listen(localhost(), &pc).await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let code = PairingCode::parse("123456").unwrap();
+        let server = tokio::spawn(async move {
+            let r = l.accept(&code, &info("pc", Os::Windows, None)).await;
+            l.shutdown().await;
+            r
+        });
+        let endpoint = quinn::Endpoint::client(localhost()).unwrap();
+        let conn = endpoint
+            .connect_with(
+                macwin_net::tls::pairing_client_config(&mac).unwrap(),
+                addr,
+                "macwin.local",
+            )
+            .unwrap()
+            .await
+            .unwrap();
+        let (mut send, _recv) = conn.open_bi().await.unwrap();
+        let _ = send.finish();
+        conn.close(0u32.into(), b"bye");
+        let res = tokio::time::timeout(T, server).await.unwrap().unwrap();
+        assert!(
+            matches!(&res, Err(e) if !matches!(e, NetError::PairingFailed(_))),
+            "dropping before PairHello must not burn the code: {res:?}"
+        );
+    }
 }
 
 mod files {
