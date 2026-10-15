@@ -25,5 +25,5 @@ Notes
 - Emergency release: Ctrl+Alt+Shift+Esc.
 - Log: %LOCALAPPDATA%\macwin\macwin.log
 
-Uninstall: run uninstall.ps1 in the install folder (add -Purge to also delete the settings
-and this PC's identity key).
+Uninstall: run uninstall.ps1 in the install folder. Add -Purge to also delete settings,
+this PC's identity key and files received with macwin.
