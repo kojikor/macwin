@@ -51,6 +51,9 @@ const EXPORTER_LABEL: &[u8] = b"EXPORTER-macwin-pairing-v1";
 const TRANSCRIPT_LABEL: &[u8] = b"macwin-pairing-v1";
 /// How long the dialer waits for the listener's close after `Done`.
 const CLOSE_WAIT: Duration = Duration::from_secs(2);
+/// Time allowed for a connecting peer to send its opening `PairHello`
+/// before the connection is dropped without burning the pairing code.
+const HELLO_WAIT: Duration = Duration::from_secs(5);
 
 /// A one-time pairing code: six decimal digits.
 #[derive(Clone, PartialEq, Eq)]
@@ -336,19 +339,48 @@ async fn exchange(
         peer_side: info.peer_side,
         spake: spake_msg,
     });
-    let own_hello = write_msg(&mut send, &hello).await?;
     // From here on the attempt has used up the code, whatever happens.
     let used = |e: NetError| match e {
         NetError::PairingFailed(_) => e,
         other => NetError::PairingFailed(other.to_string()),
     };
     let mut buf = FrameBuffer::new();
-    let peer_hello_body = read_frame(&mut recv, &mut buf).await.map_err(used)?;
-    let PairMsg::Hello(peer_hello) = decode_pair(&peer_hello_body).map_err(|e| used(e.into()))?
-    else {
-        return Err(unexpected("a pairing hello"));
+    let (own_hello, peer_hello_body, peer_hello) = match role {
+        Role::Dialer => {
+            let own_hello = write_msg(&mut send, &hello).await?;
+            let peer_hello_body = read_frame(&mut recv, &mut buf).await.map_err(used)?;
+            let PairMsg::Hello(peer_hello) =
+                decode_pair(&peer_hello_body).map_err(|e| used(e.into()))?
+            else {
+                return Err(unexpected("a pairing hello"));
+            };
+            check_versions(PROTOCOL_VERSION, peer_hello.protocol_version)
+                .map_err(|e| used(e.into()))?;
+            (own_hello, peer_hello_body, peer_hello)
+        }
+        Role::Listener => {
+            // Wait for a valid PairHello from the dialer before committing our
+            // SPAKE2 share or burning the one-time pairing code.
+            let peer_hello_body = match tokio::time::timeout(
+                HELLO_WAIT,
+                read_frame(&mut recv, &mut buf),
+            )
+            .await
+            {
+                Ok(Ok(body)) => body,
+                Ok(Err(e)) => return Err(e),
+                Err(_) => return Err(NetError::StreamSetup("the peer sent no pairing hello")),
+            };
+            let PairMsg::Hello(peer_hello) = decode_pair(&peer_hello_body)
+                .map_err(|_| NetError::StreamSetup("invalid pairing hello"))?
+            else {
+                return Err(NetError::StreamSetup("expected a pairing hello"));
+            };
+            check_versions(PROTOCOL_VERSION, peer_hello.protocol_version)?;
+            let own_hello = write_msg(&mut send, &hello).await.map_err(used)?;
+            (own_hello, peer_hello_body, peer_hello)
+        }
     };
-    check_versions(PROTOCOL_VERSION, peer_hello.protocol_version).map_err(|e| used(e.into()))?;
     let key = spake
         .finish(&peer_hello.spake)
         .map_err(|_| NetError::PairingFailed("invalid SPAKE2 message".into()))?;
