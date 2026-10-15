@@ -235,6 +235,53 @@ async fn a_stop_while_dialing_exits_promptly() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn aborting_a_connected_runner_stops_its_session() {
+    let mac_id = Identity::generate().unwrap();
+    let pc_id = Identity::generate().unwrap();
+    let addr: SocketAddr = format!("127.0.0.1:{}", free_port()).parse().unwrap();
+    let mut pc = listening(addr, &pc_id, mac_id.fingerprint()).await;
+    let mac = start(
+        session(Os::MacOs, "mac", Side::Right),
+        Mode::Dial(addr.to_string()),
+        mac_id,
+        pc_id.fingerprint(),
+    );
+
+    let mut mac = mac;
+    mac.expect("connected", connected).await;
+    pc.expect("connected", connected).await;
+    let capture = mac.last_capture();
+    tokio::time::timeout(T, async {
+        while !capture.started() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("Mac capture did not start");
+
+    mac.task.abort();
+    let error = tokio::time::timeout(T, mac.task)
+        .await
+        .expect("runner did not abort")
+        .unwrap_err();
+    assert!(error.is_cancelled());
+    tokio::time::timeout(T, async {
+        while !capture.backend_dropped() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("aborting the runner left its session capture alive");
+
+    pc.expect("peer closed", |e| {
+        matches!(e, RunEvent::Ended(SessionEnd::PeerClosed))
+    })
+    .await;
+    pc.stop.send(true).unwrap();
+    assert_eq!(pc.finish().await, RunExit::Stopped);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_dialer_finds_its_peer_at_a_new_address() {
     let mac_id = Identity::generate().unwrap();
     let pc_id = Identity::generate().unwrap();
