@@ -11,6 +11,19 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 TARGET="${MACWIN_WINDOWS_TARGET:-x86_64-pc-windows-gnu}"
 
+POWERSHELL_COMMAND=
+for candidate in pwsh powershell.exe powershell; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        POWERSHELL_COMMAND="$candidate"
+        break
+    fi
+done
+if [[ -n "$POWERSHELL_COMMAND" ]]; then
+    "$POWERSHELL_COMMAND" -NoProfile -ExecutionPolicy Bypass -File scripts/windows/tests/installer-scope.ps1
+else
+    echo 'PowerShell unavailable; skipping Windows installer tests.' >&2
+fi
+
 # rust-toolchain.toml pins 1.96.0; use `stable` when it is that version and
 # the pinned toolchain is not installed (never auto-install).
 if [[ -z "${RUSTUP_TOOLCHAIN:-}" ]] && command -v rustup >/dev/null; then
@@ -26,20 +39,22 @@ cargo build --release --locked -p macwin-agent --target "$TARGET"
 
 NAME="macwin-$VERSION-windows-x64"
 ZIP="$ROOT/target/$NAME.zip"
+TMP_ZIP="$ZIP.tmp.$$"
 STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
+rm -f "$TMP_ZIP"
+trap 'rm -rf "$STAGE"; rm -f "$TMP_ZIP"' EXIT
 mkdir "$STAGE/$NAME"
 cp "target/$TARGET/release/macwin.exe" "target/$TARGET/release/macwin-tray.exe" \
     scripts/windows/install.cmd scripts/windows/install.ps1 scripts/windows/uninstall.ps1 \
     scripts/windows/README.txt THIRD_PARTY_NOTICES "$STAGE/$NAME/"
-rm -f "$ZIP"
 cd "$STAGE"
 if command -v zip >/dev/null; then
-    zip -qr "$ZIP" "$NAME"
+    zip -qr "$TMP_ZIP" "$NAME"
 elif command -v python3 >/dev/null; then
-    python3 -m zipfile -c "$ZIP" "$NAME"
+    python3 -m zipfile -c "$TMP_ZIP" "$NAME"
 else
     # Windows: Git Bash has no zip; its Python is called python.
-    python -m zipfile -c "$ZIP" "$NAME"
+    python -m zipfile -c "$TMP_ZIP" "$NAME"
 fi
+mv -f "$TMP_ZIP" "$ZIP"
 echo "built $ZIP"
