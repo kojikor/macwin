@@ -10,6 +10,8 @@ Install
    It installs macwin for this user in %LOCALAPPDATA%\Programs\macwin, adds it to PATH,
    starts it at login, allows it through Windows Firewall on private networks (Windows asks
    for administrator rights once) and starts it. Its icon appears in the notification area.
+   For a custom location, pass -Destination "path" to install.ps1; its copied uninstaller
+   defaults to that folder.
 
 Pair
 ----
@@ -25,5 +27,5 @@ Notes
 - Emergency release: Ctrl+Alt+Shift+Esc.
 - Log: %LOCALAPPDATA%\macwin\macwin.log
 
-Uninstall: run uninstall.ps1 in the install folder (add -Purge to also delete the settings
-and this PC's identity key).
+Uninstall: run uninstall.ps1 in the install folder. Add -Purge to delete all macwin data,
+including settings, identity, logs and received files.
