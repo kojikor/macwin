@@ -25,14 +25,14 @@ use super::{
 };
 use crate::autostart::{Autostart, AutostartState};
 use crate::commands::{save_found_address, session_config};
-use crate::config::{Config, side_name};
+use crate::config::{Config, normalize_address, side_name};
 use crate::driver::Backends;
 use crate::lan::reachable_ip;
 use crate::pairing::{
     agree_side, find_waiting, pairing_responder, store_pairing, wait_for_pairing,
 };
 use crate::runner::{
-    self, Mode, RunDiscovery, RunEvent, RunExit, RunOptions, bind_for, retry_in_use,
+    self, Mode, RunDiscovery, RunEvent, RunExit, RunOptions, bind_for, resolve, retry_in_use,
 };
 
 /// Builds the backends of one connection attempt; the flag says whether the
@@ -182,6 +182,36 @@ async fn pair_with_waiting(
         .await
         .with_context(|| format!("pairing with \"{}\" failed", found.device_name))?;
     Ok((peer, Some(found.addr.to_string())))
+}
+
+fn parse_pair_entry(input: &str) -> anyhow::Result<(Option<String>, PairingCode)> {
+    let mut fields = input.split_whitespace();
+    let first = fields
+        .next()
+        .context("enter a pairing code or HOST[:PORT] followed by a code")?;
+    match fields.next() {
+        Some(code) => {
+            anyhow::ensure!(
+                fields.next().is_none(),
+                "enter only HOST[:PORT] and the pairing code"
+            );
+            Ok((Some(normalize_address(first)?), PairingCode::parse(code)?))
+        }
+        None => Ok((None, PairingCode::parse(first)?)),
+    }
+}
+
+async fn pair_at_address(
+    address: &str,
+    id: &Identity,
+    info: &PairInfo,
+    code: &PairingCode,
+) -> anyhow::Result<(PairedPeer, Option<String>)> {
+    let remote = resolve(address).await?;
+    let peer = pair_connect(bind_for(remote), remote, id, code, info)
+        .await
+        .with_context(|| format!("pairing with {address} failed"))?;
+    Ok((peer, Some(address.to_owned())))
 }
 
 impl Controller {
