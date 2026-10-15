@@ -10,10 +10,23 @@ files, so the computers have to pair again.
 #>
 [CmdletBinding()]
 param(
-    [string]$Destination = (Join-Path $env:LOCALAPPDATA 'Programs\macwin'),
+    [string]$Destination,
     [switch]$Purge
 )
 $ErrorActionPreference = 'Stop'
+
+function Get-DefaultDestination([string]$ScriptRoot) {
+    # The release folder ships install.ps1; installed copies do not.
+    if (Test-Path -LiteralPath (Join-Path $ScriptRoot 'install.ps1')) {
+        Join-Path $env:LOCALAPPDATA 'Programs\macwin'
+    } else {
+        $ScriptRoot
+    }
+}
+
+if (-not $PSBoundParameters.ContainsKey('Destination')) {
+    $Destination = Get-DefaultDestination $PSScriptRoot
+}
 
 function Send-SettingChange {
     # Removing a variable that does not exist changes nothing, but .NET still broadcasts
@@ -21,8 +34,18 @@ function Send-SettingChange {
     [Environment]::SetEnvironmentVariable('MACWIN_SETTING_CHANGE', $null, 'User')
 }
 
+function Test-PathWithinFolder([string]$Path, [string]$Folder) {
+    # A separator boundary avoids matching siblings such as `macwin-old`.
+    $folderPath = [IO.Path]::GetFullPath($Folder)
+    $separator = [IO.Path]::DirectorySeparatorChar
+    if ($folderPath[$folderPath.Length - 1] -ne $separator) {
+        $folderPath += $separator
+    }
+    [IO.Path]::GetFullPath($Path).StartsWith($folderPath, [StringComparison]::OrdinalIgnoreCase)
+}
+
 Get-Process -Name 'macwin', 'macwin-tray' -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -and $_.Path.StartsWith($Destination, [StringComparison]::OrdinalIgnoreCase) } |
+    Where-Object { $_.Path -and (Test-PathWithinFolder $_.Path $Destination) } |
     Stop-Process -Force -PassThru |
     Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
 
